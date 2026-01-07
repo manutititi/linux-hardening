@@ -1,0 +1,14 @@
+---
+base_prep_packages:
+  - vim
+  - curl
+  - htop
+  - ufw
+  - git
+
+base_prep_remove_packages:
+  - telnet
+  - rsh-client
+
+base_prep_user: "{{ ansible_user | default(ansible_env.USER) }}"
+base_prep_key_path: "./keys/{{ base_prep_user }}_id_ed25519"

@@ -1,0 +1,47 @@
+---
+- name: Update apt cache and upgrade all packages
+  ansible.builtin.apt:
+    update_cache: yes
+    upgrade: dist
+  when: ansible_os_family == "Debian"
+
+- name: Install basic utilities
+  ansible.builtin.package:
+    name: "{{ base_prep_packages }}"
+    state: present
+
+- name: Remove unnecessary/insecure packages
+  ansible.builtin.package:
+    name: "{{ base_prep_remove_packages }}"
+    state: absent
+
+- name: Ensure .ssh directory exists for the user
+  ansible.builtin.file:
+    path: "~{{ base_prep_user }}/.ssh"
+    state: directory
+    mode: '0700'
+    owner: "{{ base_prep_user }}"
+
+- name: Create local keys directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../keys"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Generate SSH key pair locally on the controller
+  community.crypto.openssh_keypair:
+    path: "{{ playbook_dir }}/../keys/{{ base_prep_user }}_id_ed25519"
+    type: ed25519
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Deploy public key to target server
+  ansible.posix.authorized_key:
+    user: "{{ base_prep_user }}"
+    state: present
+    key: "{{ lookup('file', playbook_dir + '/../keys/' + base_prep_user + '_id_ed25519.pub') }}"

@@ -1,0 +1,47 @@
+---
+- name: Apply Linux Hardening Base
+  hosts: target
+  serial: 1
+  any_errors_fatal: true
+  become: yes
+
+  handlers:
+    - name: Validate and restart sshd
+      ansible.builtin.shell: sshd -t
+      notify: Restart sshd service
+
+    - name: Restart sshd service
+      ansible.builtin.service:
+        name: ssh
+        state: restarted
+      listen: "restart sshd"
+      register: ssh_restart_result
+      failed_when: ssh_restart_result is failed
+
+    - name: Verify sshd is active
+      ansible.builtin.shell: systemctl is-active ssh
+      listen: "restart sshd"
+
+  roles:
+    - role: base_prep
+      tags: base_prep
+
+    - role: devsec.hardening.os_hardening
+      tags: os_hardening
+
+    - role: devsec.hardening.ssh_hardening
+      tags: ssh_hardening
+      vars:
+        # We use variables to hook into the role's behavior if needed
+        # or just ensure our handlers are ready.
+        sshd_custom_options:
+          - "# Guard rails enabled"
+
+    - role: fail2ban_hardening
+      tags: fail2ban
+
+  post_tasks:
+    - name: Final SSH connection test
+      ansible.builtin.wait_for_connection:
+        timeout: 60
+      tags: always

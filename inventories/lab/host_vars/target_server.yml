@@ -1,0 +1,47 @@
+---
+# =========================
+# devsec.hardening.os_hardening
+# =========================
+
+os_ignore_users:
+  - vagrant
+
+# Si quieres forzar esos sysctl (en vez de variables con nombres que quizá no aplican)
+sysctl_overwrite:
+  kernel.sysrq: 0
+  net.ipv4.ip_forward: 0
+  net.ipv6.conf.all.forwarding: 0
+
+# Si en tu entorno vm.mmap_rnd_bits=32 te diera error, bájalo (solo si ves ese fallo)
+# sysctl_overwrite:
+#   vm.mmap_rnd_bits: 16
+
+# Si usas Docker/K8s, normalmente necesitarás:
+# sysctl_overwrite:
+#   net.ipv4.ip_forward: 1
+
+# =========================
+# devsec.hardening.ssh_hardening
+# =========================
+
+ssh_permit_root_login: "no"
+
+# Recomendado: sin passwords por SSH
+ssh_server_password_login: false
+sshd_authenticationmethods: "publickey"
+
+ssh_max_auth_retries: 3
+ssh_client_alive_interval: 300
+ssh_client_alive_count: 3
+
+ssh_allow_tcp_forwarding: "no"
+ssh_allow_agent_forwarding: false
+ssh_x11_forwarding: false
+ssh_compression: false
+
+ssh_use_dns: false
+
+# Profesional: restringe quién puede entrar
+# ssh_allow_users: "ubuntu vagrant"
+# o:
+# ssh_allow_groups: "sshusers"

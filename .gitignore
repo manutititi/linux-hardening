@@ -1,0 +1,7 @@
+
+# Secrets / keys
+keys/
+*.pem
+*.key
+id_rsa
+id_ed25519
