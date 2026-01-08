@@ -1,47 +1,94 @@
 ---
+# ==========================================
+# Variables para roles devsec.hardening
+# (os_hardening + ssh_hardening)
+# ==========================================
+
 # =========================
 # devsec.hardening.os_hardening
 # =========================
 
+# No tocar usuarios de laboratorio (evita perder acceso / fallos de test)
 os_ignore_users:
   - vagrant
 
-# Si quieres forzar esos sysctl (en vez de variables con nombres que quizá no aplican)
+# Cierre de sesión por inactividad (en segundos). 0 = desactivado
+os_security_auto_logout: 900
+
+# Política de contraseñas (hardening base)
+os_auth_pw_max_age: 60
+os_auth_pw_min_age: 7
+os_auth_pw_warn_age: 7
+os_auth_pw_remember: 5
+
+# Bloqueo por intentos fallidos (hardening base)
+os_auth_retries: 5
+os_auth_lockout_time: 600
+
+# auditd: rotación práctica para VM/lab
+os_auditd_max_log_file_action: rotate
+os_auditd_num_logs: 10
+os_auditd_max_log_file: 20
+
+# Hardening adicional clásico
+os_ctrlaltdel_disabled: true
+
+# Sysctl overwrite puntuales (en lab sin Docker normalmente quieres ip_forward=0)
 sysctl_overwrite:
   kernel.sysrq: 0
   net.ipv4.ip_forward: 0
   net.ipv6.conf.all.forwarding: 0
-
-# Si en tu entorno vm.mmap_rnd_bits=32 te diera error, bájalo (solo si ves ese fallo)
-# sysctl_overwrite:
-#   vm.mmap_rnd_bits: 16
-
-# Si usas Docker/K8s, normalmente necesitarás:
-# sysctl_overwrite:
-#   net.ipv4.ip_forward: 1
+  # Si te diera error el default del rol (vm.mmap_rnd_bits=32), descomenta:
+  # vm.mmap_rnd_bits: 16
 
 # =========================
 # devsec.hardening.ssh_hardening
 # =========================
 
+# Puerto real del sshd (requisito de la práctica)
+ssh_server_ports: ['2222']
+
+# Prohibir root
 ssh_permit_root_login: "no"
 
-# Recomendado: sin passwords por SSH
+# Solo llaves (sin contraseña)
 ssh_server_password_login: false
 sshd_authenticationmethods: "publickey"
 
-ssh_max_auth_retries: 3
+# Lista blanca estricta (ajusta si usas otro usuario)
+ssh_allow_users: "vagrant"
+
+# Timeouts y reintentos (requisito práctica)
+ssh_login_grace_time: "60s"
+ssh_max_auth_retries: 2
+
+# Mantener sesiones vivas
 ssh_client_alive_interval: 300
 ssh_client_alive_count: 3
 
+# Reducir superficie
 ssh_allow_tcp_forwarding: "no"
 ssh_allow_agent_forwarding: false
 ssh_x11_forwarding: false
 ssh_compression: false
 
+# Evitar reverse DNS
 ssh_use_dns: false
 
-# Profesional: restringe quién puede entrar
-# ssh_allow_users: "ubuntu vagrant"
-# o:
-# ssh_allow_groups: "sshusers"
+# Reducir información mostrada
+ssh_print_debian_banner: false
+ssh_print_motd: false
+ssh_print_pam_motd: false
+ssh_print_last_log: false
+
+# Límites útiles
+ssh_max_sessions: 5
+ssh_max_startups: "10:30:60"
+
+# Logs más útiles para auditoría
+sshd_log_level: "VERBOSE"
+
+# Banner neutro (opcional). Si lo activas, crea el fichero en otra tarea/rol.
+# ssh_banner: true
+# ssh_banner_path: "/etc/sshd/banner.txt"
+
