@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+
+# This file is managed by ansible, every change here will be lost after a playbook run.
+
+######################################################################
+#@file        : sl.sh,
+#@created     : lunes may 26, 2025 12:53:04 CEST,
+#
+#@description :,
+######################################################################
+
+# Check if the script is run as root or interactive shell,
+#if [ -n "$PS1" ] ||  [ "$(id -u)" -eq 0 ]; then
+#    exit 1
+#fi
+
+# Avoid double-loading
+if [ -n "${__SL_CMDLOG_LOADED:-}" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+__SL_CMDLOG_LOADED=1
+
+MYTAG="sl" # Tagging the log line
+
+__sl_log_cmd() {
+    local RETRN_VAL=$?
+    local PID=$$
+    local TTY_NAME=$(tty)
+    
+    # Check if the terminal is a TTY and not a pseudo-terminal or ssh
+    # w -hs might not be robust, but keeping user logic
+    local W_LINE=$(w -hs | grep -F "${TTY_NAME##/dev/}" | head -n 1)
+
+    local ORIG_USER
+    local ORIG_IP
+    local LOGIN_USER
+
+    if [ -n "$W_LINE" ]; then
+        ORIG_USER=$(whoami)
+        ORIG_IP=$(echo "$W_LINE" | awk '{print $3}')
+        LOGIN_USER=$(logname 2>/dev/null || echo "$ORIG_USER")
+    else
+        LOGIN_USER=$(logname 2>/dev/null || whoami)
+        W_LINE=$(w -hs | grep -F "$LOGIN_USER" | head -n 1)
+        ORIG_USER=$(whoami)
+        ORIG_IP=$(echo "$W_LINE" | awk '{print $3}')
+    fi
+    
+    # Clean up empty IP or weird chars
+    [ -z "$ORIG_IP" ] && ORIG_IP="-"
+
+    local CMD=$(history 1 | sed "s/^[ ]*[0-9]\+[ ]*//")
+    
+    # Prevent logging empty commands
+    [ -z "$CMD" ] && return
+    
+    # Check for logger -e support, otherwise just run logger
+    if logger --help 2>&1 | grep -q -- -e; then
+        logger -p local1.notice -t "$MYTAG" -e "$LOGIN_USER $ORIG_USER $ORIG_IP $CMD [$RETRN_VAL] [$PID]"
+    else
+        logger -p local1.notice -t "$MYTAG" -- "$LOGIN_USER $ORIG_USER $ORIG_IP $CMD [$RETRN_VAL] [$PID]"
+    fi
+}
+
+# Only append if not already there
+if [[ ! "${PROMPT_COMMAND:-}" =~ "__sl_log_cmd" ]]; then
+  export PROMPT_COMMAND="__sl_log_cmd; ${PROMPT_COMMAND:-}"
+fi

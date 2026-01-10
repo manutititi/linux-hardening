@@ -6,5 +6,6 @@ all:
           ansible_host: 192.168.56.10
           ansible_user: vagrant
           ansible_become: true
-          ansible_ssh_private_key_file: ~/.ssh/target
+          ansible_ssh_private_key_file: /home/manu/own/digi/bastionado/.vagrant/machines/default/virtualbox/private_key
           ansible_port: 2222
+          ansible_ssh_common_args: "-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"

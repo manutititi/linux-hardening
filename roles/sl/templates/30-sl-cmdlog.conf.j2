@@ -1,0 +1,15 @@
+# Managed by Ansible
+# Write local1.* to /var/log/cmd.log with a stable template
+
+template(name="SLFormat" type="list") {
+  property(name="timegenerated" dateFormat="rfc3339")
+  constant(value=" ")
+  property(name="hostname")
+  constant(value=" ")
+  property(name="syslogtag")
+  constant(value=" ")
+  property(name="msg")
+  constant(value="\n")
+}
+
+local1.*  /var/log/cmd.log;SLFormat

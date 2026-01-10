@@ -1,0 +1,71 @@
+---
+# roles/sl/tasks/main.yml
+#
+# Command logging for interactive bash sessions using DEBUG trap + logger(local1.notice)
+# Logs to /var/log/cmd.log via rsyslog snippet.
+#
+# Optional variables:
+#   ip_out: "X.X.X.X"   # remote syslog collector
+#   service_names: ["rsyslog"]  # optional gate for forwarding
+
+- name: Ensure required packages
+  ansible.builtin.package:
+    name:
+      - rsyslog
+    state: present
+  become: true
+
+- name: Install command-logging profile script
+  ansible.builtin.template:
+    src: sl.sh.j2
+    dest: /etc/profile.d/90-sl-cmdlog.sh
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Ensure logging script is sourced in /etc/bash.bashrc
+  ansible.builtin.blockinfile:
+    path: /etc/bash.bashrc
+    block: |
+      if [ -f /etc/profile.d/90-sl-cmdlog.sh ]; then
+        . /etc/profile.d/90-sl-cmdlog.sh
+      fi
+    marker: "# {mark} ANSIBLE MANAGED BLOCK: sl-cmdlog"
+  become: true
+
+- name: Create cmd log file
+  ansible.builtin.file:
+    path: /var/log/cmd.log
+    state: touch
+    owner: syslog
+    group: adm
+    mode: "0640"
+  become: true
+
+- name: Configure rsyslog to write local1 to /var/log/cmd.log
+  ansible.builtin.template:
+    src: 30-sl-cmdlog.conf.j2
+    dest: /etc/rsyslog.d/30-sl-cmdlog.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Configure rsyslog forwarding (optional)
+  ansible.builtin.template:
+    src: 90-forward.conf.j2
+    dest: /etc/rsyslog.d/90-forward.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - ip_out is defined
+    - service_names is not defined or ('rsyslog' in service_names)
+  become: true
+
+- name: Restart rsyslog service
+  ansible.builtin.service:
+    name: rsyslog
+    state: restarted
+  become: true

@@ -1,0 +1,222 @@
+---
+# roles/cowrie/tasks/main.yml
+#
+# Cowrie honeypot:
+# - Cowrie listens on 2223
+# - iptables redirects 22 -> 2223
+# - Shell/prompt hostname from [honeypot] hostname (your Cowrie version)
+# - SSH banner hostname from [ssh] server_hostname
+# - Fake file appears in ls because we generate a custom pickle filesystem via createfs
+#   and configure [shell] filesystem to use it.
+
+- name: Install system dependencies
+  ansible.builtin.apt:
+    name:
+      - acl
+      - git
+      - python3-virtualenv
+      - libssl-dev
+      - libffi-dev
+      - build-essential
+      - libpython3-dev
+      - python3-minimal
+      - authbind
+      - virtualenv
+      - iptables
+      - python3-pip
+    state: present
+    update_cache: true
+  become: true
+
+- name: Create cowrie user
+  ansible.builtin.user:
+    name: cowrie
+    password: "!"
+    shell: /bin/bash
+    home: /home/cowrie
+    create_home: true
+  become: true
+
+- name: Ensure cowrie home ownership
+  ansible.builtin.file:
+    path: /home/cowrie
+    state: directory
+    owner: cowrie
+    group: cowrie
+    mode: "0755"
+  become: true
+
+- name: Clone Cowrie repository
+  ansible.builtin.git:
+    repo: https://github.com/cowrie/cowrie.git
+    dest: /home/cowrie/cowrie
+    version: main
+    update: true
+  become: true
+  become_user: cowrie
+
+- name: Create virtualenv
+  ansible.builtin.command:
+    cmd: virtualenv --python=python3 cowrie-env
+    creates: /home/cowrie/cowrie/cowrie-env
+  args:
+    chdir: /home/cowrie/cowrie
+  become: true
+  become_user: cowrie
+
+- name: Upgrade pip inside virtualenv
+  ansible.builtin.command:
+    cmd: /home/cowrie/cowrie/cowrie-env/bin/pip install --upgrade pip setuptools wheel
+  become: true
+  become_user: cowrie
+
+- name: Install Python requirements
+  ansible.builtin.pip:
+    requirements: /home/cowrie/cowrie/requirements.txt
+    virtualenv: /home/cowrie/cowrie/cowrie-env
+  become: true
+  become_user: cowrie
+
+- name: Install Cowrie in editable mode (provides 'cowrie' CLI + tools)
+  ansible.builtin.command:
+    cmd: /home/cowrie/cowrie/cowrie-env/bin/pip install -e .
+  args:
+    chdir: /home/cowrie/cowrie
+  become: true
+  become_user: cowrie
+
+- name: Ensure Cowrie CLI exists in venv
+  ansible.builtin.stat:
+    path: /home/cowrie/cowrie/cowrie-env/bin/cowrie
+  register: cowrie_cli
+  become: true
+
+- name: Fail if Cowrie CLI is missing
+  ansible.builtin.fail:
+    msg: "Missing /home/cowrie/cowrie/cowrie-env/bin/cowrie. Editable install failed."
+  when: not cowrie_cli.stat.exists
+  become: true
+
+- name: Ensure createfs tool exists in venv
+  ansible.builtin.stat:
+    path: /home/cowrie/cowrie/cowrie-env/bin/createfs
+  register: cowrie_createfs
+  become: true
+
+- name: Fail if createfs is missing
+  ansible.builtin.fail:
+    msg: "Missing /home/cowrie/cowrie/cowrie-env/bin/createfs. Cannot generate filesystem pickle."
+  when: not cowrie_createfs.stat.exists
+  become: true
+
+# Required runtime/log dirs to avoid "Error getting shell" ttylog FileNotFoundError
+- name: Ensure Cowrie var directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: cowrie
+    group: cowrie
+    mode: "0750"
+  loop:
+    - /home/cowrie/cowrie/var
+    - /home/cowrie/cowrie/var/run
+    - /home/cowrie/cowrie/var/log
+    - /home/cowrie/cowrie/var/log/cowrie
+    - /home/cowrie/cowrie/var/lib
+    - /home/cowrie/cowrie/var/lib/cowrie
+    - /home/cowrie/cowrie/var/lib/cowrie/tty
+  become: true
+
+- name: Ensure honeyfs root exists
+  ansible.builtin.file:
+    path: /home/cowrie/cowrie/honeyfs/root
+    state: directory
+    owner: cowrie
+    group: cowrie
+    mode: "0755"
+  become: true
+
+- name: Create fake secrets file (content for cat)
+  ansible.builtin.copy:
+    dest: /home/cowrie/cowrie/honeyfs/root/secrets.txt
+    owner: cowrie
+    group: cowrie
+    mode: "0644"
+    content: |
+      === INTERNAL SECRETS ===
+      AWS_ACCESS_KEY_ID=AKIAFAKE123456
+      AWS_SECRET_ACCESS_KEY=SuperSecretKeyDontShare
+      DB_ROOT_PASSWORD=ProdRoot2025!
+  become: true
+
+# Generate a custom pickle so that /root/secrets.txt appears in ls.
+# This is required because honeyfs alone doesn't create metadata entries.
+- name: Generate custom filesystem pickle from honeyfs
+  ansible.builtin.command:
+    cmd: /home/cowrie/cowrie/cowrie-env/bin/createfs -l /home/cowrie/cowrie/honeyfs -d 8 -o /home/cowrie/cowrie/var/lib/cowrie/custom.pickle
+  args:
+    chdir: /home/cowrie/cowrie
+    creates: /home/cowrie/cowrie/var/lib/cowrie/custom.pickle
+  become: true
+  become_user: cowrie
+
+# Configure Cowrie to use the custom pickle + correct hostname/port settings
+- name: Configure Cowrie (hostname + SSH banner + listen port + custom filesystem)
+  ansible.builtin.copy:
+    dest: /home/cowrie/cowrie/etc/cowrie.cfg
+    owner: cowrie
+    group: cowrie
+    mode: "0644"
+    content: |
+      [honeypot]
+      hostname = srv-finanzas
+
+      [ssh]
+      enabled = true
+      listen_endpoints = tcp:2223:interface=0.0.0.0
+      server_hostname = srv-finanzas
+
+      [shell]
+      filesystem = /home/cowrie/cowrie/var/lib/cowrie/custom.pickle
+  become: true
+
+- name: Stop Cowrie if running (ignore if not running)
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      cd /home/cowrie/cowrie
+      source cowrie-env/bin/activate
+      cowrie stop || true
+    executable: /bin/bash
+  become: true
+  become_user: cowrie
+
+- name: Start Cowrie
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      cd /home/cowrie/cowrie
+      source cowrie-env/bin/activate
+      cowrie start
+    executable: /bin/bash
+  become: true
+  become_user: cowrie
+  args:
+    creates: /home/cowrie/cowrie/var/run/cowrie.pid
+
+- name: Verify Cowrie is listening on 2223
+  ansible.builtin.shell:
+    cmd: ss -lntp | grep -E ':(2223)\b' || (echo "Cowrie not listening on 2223"; ss -lntp; exit 1)
+    executable: /bin/bash
+  become: true
+
+- name: Redirect port 22 to 2223 (Cowrie)
+  ansible.builtin.iptables:
+    table: nat
+    chain: PREROUTING
+    protocol: tcp
+    destination_port: 22
+    jump: REDIRECT
+    to_ports: 2223
+    comment: Redirect SSH to Cowrie
+  become: true

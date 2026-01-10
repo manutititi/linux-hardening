@@ -3,7 +3,7 @@
   hosts: target
   serial: 1
   any_errors_fatal: true
-  become: yes
+  become: true
 
   handlers:
     - name: Validate and restart sshd
@@ -14,6 +14,8 @@
       ansible.builtin.service:
         name: ssh
         state: restarted
+      async: 1
+      poll: 0
       listen: "restart sshd"
       register: ssh_restart_result
       failed_when: ssh_restart_result is failed
@@ -40,7 +42,19 @@
     - role: fail2ban_hardening
       tags: fail2ban
 
+    - role: sl
+      tags: sl
+
+    - role: cowrie
+      tags: cowrie
+
   post_tasks:
+    - name: Update ansible_port to new SSH port
+      ansible.builtin.set_fact:
+        ansible_port: "{{ ssh_server_ports | first }}"
+      when: ssh_server_ports is defined and ssh_server_ports | length > 0
+      tags: always
+
     - name: Final SSH connection test
       ansible.builtin.wait_for_connection:
         timeout: 60

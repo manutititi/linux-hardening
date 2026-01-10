@@ -1,0 +1,8 @@
+---
+- name: Restart cowrie
+  ansible.builtin.shell:
+    cmd: "source cowrie-env/bin/activate && ./bin/cowrie restart"
+    chdir: /home/cowrie/cowrie
+    executable: /bin/bash
+  become: true
+  become_user: cowrie
