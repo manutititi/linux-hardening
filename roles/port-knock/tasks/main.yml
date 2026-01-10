@@ -1,0 +1,90 @@
+---
+- name: Detect interface for ansible_host
+  set_fact:
+    knock_interface: "{{ item }}"
+  loop: "{{ ansible_interfaces }}"
+  when:
+    - ansible_facts[item]['ipv4'] is defined
+    - ansible_facts[item]['ipv4']['address'] == ansible_host
+
+- name: Debug interface
+  debug:
+    msg: "Detected Knock Interface: {{ knock_interface }} for IP {{ ansible_host }}"
+
+- name: Assert Debian/Ubuntu
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "Debian"
+    fail_msg: "Este rol está preparado para Debian/Ubuntu (/etc/default/knockd)."
+
+- name: Install knockd
+  ansible.builtin.apt:
+    name: knockd
+    state: present
+    update_cache: true
+
+- name: Install ufw if using ufw backend
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+  when: knock_firewall_backend == "ufw"
+
+- name: Ensure scripts directory exists
+  ansible.builtin.file:
+    path: "/usr/local/sbin"
+    state: directory
+    mode: "0755"
+
+- name: Deploy open SSH script
+  ansible.builtin.template:
+    src: knock_open_ssh.sh.j2
+    dest: "{{ knock_open_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy close SSH script
+  ansible.builtin.template:
+    src: knock_close_ssh.sh.j2
+    dest: "{{ knock_close_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure /etc/knockd.conf
+  ansible.builtin.template:
+    src: knockd.conf.j2
+    dest: /etc/knockd.conf
+    owner: root
+    group: root
+    mode: "0640"
+  notify: Restart knockd
+
+- name: Enable knockd in /etc/default/knockd
+  ansible.builtin.lineinfile:
+    path: /etc/default/knockd
+    regexp: "^START_KNOCKD="
+    line: "START_KNOCKD=1"
+    create: false
+  notify: Restart knockd
+
+- name: Ensure knockd interface is set in /etc/default/knockd
+  ansible.builtin.lineinfile:
+    path: /etc/default/knockd
+    regexp: "^KNOCKD_OPTS="
+    line: 'KNOCKD_OPTS="-i {{ knock_interface }}"'
+    create: false
+  notify: Restart knockd
+
+- name: Ensure knockd service is enabled and started
+  ansible.builtin.service:
+    name: knockd
+    state: started
+    enabled: true
+
+- name: Firewall untouched on install (info)
+  ansible.builtin.debug:
+    msg:
+      - "Instalado knockd y scripts."
+      - "No se han aplicado cambios de firewall (SSH sigue como estuviera)."
+      - "Cuando cierres SSH manualmente, el knocking podrá abrir/cerrar por IP."

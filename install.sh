@@ -129,15 +129,15 @@ main() {
   [[ -x "$venv_python" ]] || die "Virtualenv python not found at $venv_python"
 
   log "[*] Upgrading pip tooling..."
-  python -m pip install --upgrade pip setuptools wheel
+  "$venv_python" -m pip install --upgrade pip setuptools wheel
 
   log "[*] Installing Ansible via pip (${ANSIBLE_PIP_PKG})..."
   case "$ANSIBLE_PIP_PKG" in
     ansible)
-      python -m pip install --upgrade "$(pkg_spec ansible "$ANSIBLE_VERSION")"
+      "$venv_python" -m pip install --upgrade "$(pkg_spec ansible "$ANSIBLE_VERSION")"
       ;;
     ansible-core)
-      python -m pip install --upgrade "$(pkg_spec ansible-core "$ANSIBLE_CORE_VER")"
+      "$venv_python" -m pip install --upgrade "$(pkg_spec ansible-core "$ANSIBLE_CORE_VER")"
       ;;
     *)
       die "ANSIBLE_PIP_PKG must be 'ansible' or 'ansible-core' (current: $ANSIBLE_PIP_PKG)"
@@ -148,19 +148,22 @@ main() {
   have_cmd ansible-galaxy || die "ansible-galaxy not found after installation."
 
   log "[*] Installed Ansible:"
-  ansible --version
+  "$ANSIBLE_VENV_DIR/bin/ansible" --version
 
   [[ -f "$req_file" ]] || die "Requirements file not found: $root/$req_file"
 
   mkdir -p "$col_dir"
 
   log "[*] Installing collections from '$req_file' into '$col_dir'..."
-  ansible-galaxy collection install -r "$req_file" -p "$col_dir" -f
+  "$ANSIBLE_VENV_DIR/bin/ansible-galaxy" collection install -r "$req_file" -p "$col_dir" -f
 
   # Optional: install roles if requirements.yml defines roles:
   log "[*] Installing roles (if defined in '$req_file') into '$col_dir/roles'..."
   mkdir -p "$col_dir/roles"
-  ansible-galaxy role install -r "$req_file" -p "$col_dir/roles" -f || true
+  "$ANSIBLE_VENV_DIR/bin/ansible-galaxy" role install -r "$req_file" -p "$col_dir/roles" -f || true
+
+  log "[*] Installing Reporting dependencies (pandas, fpdf2)..."
+  "$venv_python" -m pip install pandas fpdf2
 
   cat <<EOF
 

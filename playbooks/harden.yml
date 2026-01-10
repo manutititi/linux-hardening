@@ -48,6 +48,9 @@
     - role: cowrie
       tags: cowrie
 
+    # - role: port-knock
+    #   tags: port-knock
+
   post_tasks:
     - name: Update ansible_port to new SSH port
       ansible.builtin.set_fact:
@@ -59,3 +62,5 @@
       ansible.builtin.wait_for_connection:
         timeout: 60
       tags: always
+
+    

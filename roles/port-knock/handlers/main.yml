@@ -1,0 +1,5 @@
+---
+- name: Restart knockd
+  ansible.builtin.service:
+    name: knockd
+    state: restarted

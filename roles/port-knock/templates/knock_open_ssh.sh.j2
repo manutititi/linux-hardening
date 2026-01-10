@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+IP="${1:-}"
+PORT="{{ ssh_server_ports | first | default(22) }}"
+
+[[ -z "$IP" ]] && exit 0
+
+{% if knock_firewall_backend == "ufw" %}
+# Abre SSH solo para esa IP (no toca reglas globales)
+ufw allow from "${IP}" to any port "${PORT}" proto tcp >/dev/null 2>&1 || true
+{% else %}
+# Abre SSH solo para esa IP (iptables INPUT)
+if ! iptables -C INPUT -p tcp -s "$IP" --dport "$PORT" -j ACCEPT 2>/dev/null; then
+  iptables -I INPUT -p tcp -s "$IP" --dport "$PORT" -j ACCEPT
+fi
+{% endif %}

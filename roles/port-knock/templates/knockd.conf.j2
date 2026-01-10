@@ -1,0 +1,15 @@
+[options]
+        UseSyslog
+        Interface = {{ knock_interface }}
+
+[openSSH]
+        sequence    = {{ knock_sequence_open }}
+        seq_timeout = 10
+        command     = {{ knock_open_script_path }} %IP%
+        tcpflags    = syn
+
+[closeSSH]
+        sequence    = {{ knock_sequence_close }}
+        seq_timeout = 10
+        command     = {{ knock_close_script_path }} %IP%
+        tcpflags    = syn

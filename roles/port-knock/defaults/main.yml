@@ -1,0 +1,14 @@
+---
+knock_interface: "enp0s8" # Fallback if detection fails
+
+knock_sequence_open: "7000:tcp,8000:tcp,9000:tcp"
+knock_sequence_close: "9000:tcp,8000:tcp,7000:tcp"
+
+# Backend disponible: "ufw" o "iptables"
+knock_firewall_backend: "ufw"
+
+knock_open_script_path: "/usr/local/sbin/knock_open_ssh.sh"
+knock_close_script_path: "/usr/local/sbin/knock_close_ssh.sh"
+
+# CRITICO: no tocar firewall al instalar
+knock_manage_firewall_on_install: false

@@ -45,7 +45,7 @@ sysctl_overwrite:
 # devsec.hardening.ssh_hardening
 # =========================
 
-# Puerto real del sshd (requisito de la práctica)
+# Puerto real del sshd
 ssh_server_ports: ['2222']
 
 # Prohibir root
@@ -55,10 +55,10 @@ ssh_permit_root_login: "no"
 ssh_server_password_login: false
 sshd_authenticationmethods: "publickey"
 
-# Lista blanca estricta (ajusta si usas otro usuario)
+# Lista blanca estricta
 ssh_allow_users: "vagrant"
 
-# Timeouts y reintentos (requisito práctica)
+# Timeouts y reintentos
 ssh_login_grace_time: "60s"
 ssh_max_auth_retries: 2
 
