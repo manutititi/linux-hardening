@@ -16,3 +16,5 @@ collections/
 
 reports/*
 !reports/.gitkeep
+
+./ansible_ejecucion.log

@@ -5,10 +5,10 @@ IFS=$'\n\t'
 # -----------------------------------------------------------------------------
 # Ansible bootstrap (pip + venv) + install collections/roles from requirements.yml
 #
-# Good practices:
-# - Uses a virtualenv (no system-wide pip installs)
-# - Fails fast with clear errors
-# - Works when executed from anywhere inside the repo (uses git root when possible)
+# - Creates a local virtualenv (no system-wide pip installs)
+# - Auto-installs python venv support on Debian/Ubuntu if missing
+# - Repairs/removes broken virtualenvs automatically
+# - Works when executed from anywhere inside the repo
 # - Installs Ansible via pip (ansible or ansible-core)
 # - Installs collections into a project-local collections directory
 # - Installs roles from requirements.yml if present (optional)
@@ -23,11 +23,6 @@ IFS=$'\n\t'
 #   ANSIBLE_CORE_VER    (default: "")               # e.g. 2.16.12 (only if ansible-core)
 #   REQUIREMENTS_FILE   (default: requirements.yml)
 #   COLLECTIONS_DIR     (default: ./collections)
-#
-# Notes:
-# - On Debian/Ubuntu you must have python venv support installed:
-#     sudo apt update && sudo apt install -y python3-venv
-#   (or python3.10-venv for Python 3.10)
 # -----------------------------------------------------------------------------
 
 ANSIBLE_VENV_DIR="${ANSIBLE_VENV_DIR:-.venv-ansible}"
@@ -43,13 +38,23 @@ die() { err "$*"; exit 1; }
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
+run_root() {
+  # Run a command as root (directly if already root, else via sudo if available)
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    "$@"
+  else
+    have_cmd sudo || die "Necesitas privilegios de root y no existe 'sudo'. Ejecuta como root o instala sudo."
+    sudo "$@"
+  fi
+}
+
 python_bin() {
   if have_cmd python3; then
     echo "python3"
   elif have_cmd python; then
     echo "python"
   else
-    die "Python not found (python3/python). Install Python 3 first."
+    die "Python no encontrado (python3/python). Instala Python 3."
   fi
 }
 
@@ -71,27 +76,85 @@ pkg_spec() {
   fi
 }
 
-require_venv_support() {
+is_debian_like() {
+  [[ -r /etc/os-release ]] || return 1
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  [[ "${ID:-}" == "debian" || "${ID:-}" == "ubuntu" || "${ID_LIKE:-}" == *"debian"* ]]
+}
+
+python_major_minor() {
+  local py="$1"
+  "$py" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+}
+
+install_venv_support_debian() {
+  local py="$1"
+  local mm pkg
+
+  mm="$(python_major_minor "$py")"
+
+  # Prefer versioned venv package if it exists; fallback to python3-venv.
+  # On Ubuntu 22.04 + Python 3.10: python3.10-venv
+  pkg="python${mm}-venv"
+
+  log "[*] Instalando soporte venv para Python ${mm} (Debian/Ubuntu)..."
+  run_root apt-get update -y
+
+  if run_root apt-get install -y "$pkg"; then
+    return 0
+  fi
+
+  log "[*] No se pudo instalar '$pkg'. Probando con 'python3-venv'..."
+  run_root apt-get install -y python3-venv
+}
+
+ensure_venv_support() {
   local py="$1"
 
-  # Quick check: can we import venv?
-  if ! "$py" -c 'import venv' >/dev/null 2>&1; then
-    err "Python venv support is missing (module 'venv' not available)."
-    err ""
-    err "On Debian/Ubuntu, install it with:"
-    err "  sudo apt update"
-    err "  sudo apt install -y python3-venv"
-    err ""
-    err "If you are using Python 3.10 specifically, you may need:"
-    err "  sudo apt install -y python3.10-venv"
-    err ""
-    die "Cannot create virtual environment."
+  # Check if venv module exists
+  if "$py" -c 'import venv' >/dev/null 2>&1; then
+    return 0
   fi
 
-  # Also ensure ensurepip works inside venv creation
-  if ! "$py" -m venv --help >/dev/null 2>&1; then
-    die "Your Python cannot run 'python -m venv'. Install venv support for your Python."
+  err "Falta soporte de venv (modulo 'venv' no disponible)."
+
+  if is_debian_like && have_cmd apt-get; then
+    install_venv_support_debian "$py"
+  else
+    err "No puedo auto-instalar dependencias en este sistema."
+    err "Instala el soporte de venv para tu Python y reintenta."
+    die "No se puede crear el virtualenv."
   fi
+
+  # Re-check after install
+  if ! "$py" -c 'import venv' >/dev/null 2>&1; then
+    die "He intentado instalar venv pero sigue sin estar disponible. Revisa paquetes de Python/venv."
+  fi
+}
+
+venv_is_valid() {
+  local vdir="$1"
+  [[ -x "$vdir/bin/python" ]] && [[ -f "$vdir/bin/activate" ]] && [[ -x "$vdir/bin/pip" ]]
+}
+
+recreate_venv_if_needed() {
+  local py="$1"
+  local vdir="$2"
+
+  if [[ -d "$vdir" ]] && ! venv_is_valid "$vdir"; then
+    log "[*] Detectado virtualenv roto/incompleto: $vdir"
+    log "[*] Eliminando y recreando..."
+    rm -rf "$vdir"
+  fi
+
+  if [[ ! -d "$vdir" ]]; then
+    log "[*] Creando virtualenv en $vdir..."
+    "$py" -m venv "$vdir"
+  fi
+
+  # Validate again
+  venv_is_valid "$vdir" || die "Virtualenv no válido tras crearlo: $vdir"
 }
 
 main() {
@@ -109,24 +172,14 @@ main() {
   log "[*] Python: $("$py" --version 2>&1)"
   log "[*] Virtualenv dir: $ANSIBLE_VENV_DIR"
 
-  require_venv_support "$py"
-
-  # Create venv (fresh venv is safest if previous attempt left partial dir)
-  if [[ -d "$ANSIBLE_VENV_DIR" && ! -x "$ANSIBLE_VENV_DIR/bin/python" ]]; then
-    log "[*] Removing broken virtualenv: $ANSIBLE_VENV_DIR"
-    rm -rf "$ANSIBLE_VENV_DIR"
-  fi
-
-  if [[ ! -d "$ANSIBLE_VENV_DIR" ]]; then
-    log "[*] Creating virtualenv..."
-    "$py" -m venv "$ANSIBLE_VENV_DIR"
-  fi
+  ensure_venv_support "$py"
+  recreate_venv_if_needed "$py" "$ANSIBLE_VENV_DIR"
 
   # shellcheck disable=SC1091
   source "$ANSIBLE_VENV_DIR/bin/activate"
 
   venv_python="$ANSIBLE_VENV_DIR/bin/python"
-  [[ -x "$venv_python" ]] || die "Virtualenv python not found at $venv_python"
+  [[ -x "$venv_python" ]] || die "Python del venv no encontrado: $venv_python"
 
   log "[*] Upgrading pip tooling..."
   "$venv_python" -m pip install --upgrade pip setuptools wheel
@@ -140,30 +193,29 @@ main() {
       "$venv_python" -m pip install --upgrade "$(pkg_spec ansible-core "$ANSIBLE_CORE_VER")"
       ;;
     *)
-      die "ANSIBLE_PIP_PKG must be 'ansible' or 'ansible-core' (current: $ANSIBLE_PIP_PKG)"
+      die "ANSIBLE_PIP_PKG debe ser 'ansible' o 'ansible-core' (actual: $ANSIBLE_PIP_PKG)"
       ;;
   esac
 
-  have_cmd ansible || die "ansible not found after installation."
-  have_cmd ansible-galaxy || die "ansible-galaxy not found after installation."
+  have_cmd ansible || die "ansible no está en PATH tras la instalación (¿venv activado?)."
+  have_cmd ansible-galaxy || die "ansible-galaxy no está en PATH tras la instalación (¿venv activado?)."
 
   log "[*] Installed Ansible:"
   "$ANSIBLE_VENV_DIR/bin/ansible" --version
 
-  [[ -f "$req_file" ]] || die "Requirements file not found: $root/$req_file"
+  [[ -f "$req_file" ]] || die "Requirements file no encontrado: $root/$req_file"
 
   mkdir -p "$col_dir"
 
   log "[*] Installing collections from '$req_file' into '$col_dir'..."
   "$ANSIBLE_VENV_DIR/bin/ansible-galaxy" collection install -r "$req_file" -p "$col_dir" -f
 
-  # Optional: install roles if requirements.yml defines roles:
   log "[*] Installing roles (if defined in '$req_file') into '$col_dir/roles'..."
   mkdir -p "$col_dir/roles"
   "$ANSIBLE_VENV_DIR/bin/ansible-galaxy" role install -r "$req_file" -p "$col_dir/roles" -f || true
 
   log "[*] Installing Reporting dependencies (pandas, fpdf2)..."
-  "$venv_python" -m pip install pandas fpdf2
+  "$venv_python" -m pip install --upgrade pandas fpdf2
 
   cat <<EOF
 
@@ -186,4 +238,3 @@ EOF
 }
 
 main "$@"
-
