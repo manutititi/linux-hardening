@@ -1,0 +1,21 @@
+---
+integrity_packages:
+  - aide
+  - rkhunter
+
+rkhunter_force_propupd: false
+
+aide_db_dir: /var/lib/aide
+aide_active_db_candidates:
+  - /var/lib/aide/aide.db
+  - /var/lib/aide/aide.db.gz
+aide_new_db_candidates:
+  - /var/lib/aide/aide.db.new
+  - /var/lib/aide/aide.db.new.gz
+
+# Si existe cron diario en Debian/Ubuntu
+aide_cron_daily_path: /etc/cron.daily/aide
+
+# Esperas/timeout
+aide_lock_wait_retries: 60
+aide_lock_wait_delay: 2

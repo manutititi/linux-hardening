@@ -1,16 +1,4 @@
 ---
-- name: Detect interface for ansible_host
-  set_fact:
-    knock_interface: "{{ item }}"
-  loop: "{{ ansible_interfaces }}"
-  when:
-    - ansible_facts[item]['ipv4'] is defined
-    - ansible_facts[item]['ipv4']['address'] == ansible_host
-
-- name: Debug interface
-  debug:
-    msg: "Detected Knock Interface: {{ knock_interface }} for IP {{ ansible_host }}"
-
 - name: Assert Debian/Ubuntu
   ansible.builtin.assert:
     that:
@@ -28,6 +16,40 @@
     name: ufw
     state: present
   when: knock_firewall_backend == "ufw"
+
+# Detección robusta de interfaz:
+# 1) si ansible_host == ansible_default_ipv4.address => usa ansible_default_ipv4.interface
+# 2) si no, busca interfaz que contenga ansible_host en sus IPv4
+- name: Set default knock interface when ansible_host matches default IPv4
+  ansible.builtin.set_fact:
+    knock_interface: "{{ ansible_default_ipv4.interface }}"
+  when:
+    - ansible_default_ipv4 is defined
+    - ansible_default_ipv4.address is defined
+    - ansible_default_ipv4.interface is defined
+    - ansible_host == ansible_default_ipv4.address
+
+- name: Detect interface for ansible_host (fallback)
+  ansible.builtin.set_fact:
+    knock_interface: "{{ item }}"
+  loop: "{{ ansible_interfaces | default([]) }}"
+  when:
+    - knock_interface is not defined
+    - ansible_facts[item] is defined
+    - ansible_facts[item].ipv4 is defined
+    - ansible_facts[item].ipv4.address is defined
+    - ansible_facts[item].ipv4.address == ansible_host
+
+- name: Fail if knock_interface not detected
+  ansible.builtin.fail:
+    msg: "No pude detectar la interfaz para ansible_host={{ ansible_host }}. Revisa facts (ansible -m setup) o define knock_interface manualmente."
+  when: knock_interface is not defined
+
+- name: Debug interface and ssh_port
+  ansible.builtin.debug:
+    msg:
+      - "Detected Knock Interface: {{ knock_interface }} for IP {{ ansible_host }}"
+      - "SSH port to control (ssh_port): {{ ssh_port }}"
 
 - name: Ensure scripts directory exists
   ansible.builtin.file:
@@ -82,9 +104,57 @@
     state: started
     enabled: true
 
+# Info si no tocas firewall
 - name: Firewall untouched on install (info)
   ansible.builtin.debug:
     msg:
       - "Instalado knockd y scripts."
       - "No se han aplicado cambios de firewall (SSH sigue como estuviera)."
-      - "Cuando cierres SSH manualmente, el knocking podrá abrir/cerrar por IP."
+      - "Para que el knocking tenga efecto, cierra SSH manualmente o activa knock_manage_firewall_on_install=true."
+  when: not knock_manage_firewall_on_install
+
+# Modo estricto: cerrar SSH al instalar (para que solo abra tras knock)
+- name: Strict Port Knocking Enforcement (iptables)
+  block:
+    - name: Ensure SSH is closed by default (DROP new connections) - iptables
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "{{ ssh_port }}"
+        ctstate: NEW
+        jump: DROP
+        state: present
+
+    - name: Ensure loopback is allowed - iptables
+      ansible.builtin.iptables:
+        chain: INPUT
+        in_interface: lo
+        jump: ACCEPT
+        state: present
+
+    - name: Ensure established/related is allowed - iptables
+      ansible.builtin.iptables:
+        chain: INPUT
+        ctstate: ESTABLISHED,RELATED
+        jump: ACCEPT
+        state: present
+  when:
+    - knock_manage_firewall_on_install
+    - knock_firewall_backend == "iptables"
+
+- name: Strict Port Knocking Enforcement (ufw)
+  block:
+    - name: Deny SSH by default - ufw
+      ansible.builtin.command: "ufw deny {{ ssh_port }}/tcp"
+      changed_when: false
+      failed_when: false
+
+    - name: Ensure ufw enabled
+      ansible.builtin.command: "ufw --force enable"
+      changed_when: false
+      failed_when: false
+  when:
+    - knock_manage_firewall_on_install
+    - knock_firewall_backend == "ufw"
+
+

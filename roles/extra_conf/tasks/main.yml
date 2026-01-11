@@ -1,0 +1,17 @@
+---
+- name: Collect service facts
+  ansible.builtin.service_facts:
+
+- name: Check if Postfix is installed and configured
+  ansible.builtin.stat:
+    path: /etc/postfix/main.cf
+  register: postfix_config
+
+- name: Harden SMTP Banner (MAIL-8818) - Hide version
+  ansible.builtin.lineinfile:
+    path: /etc/postfix/main.cf
+    regexp: "^smtpd_banner"
+    line: "smtpd_banner = $myhostname ESMTP"
+    state: present
+  notify: Reload Postfix
+  when: postfix_config.stat.exists

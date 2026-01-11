@@ -1,0 +1,26 @@
+---
+- name: Update apt cache (Debian/Ubuntu)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_facts.pkg_mgr == "apt"
+
+- name: Install integrity and malware scanning tools
+  ansible.builtin.package:
+    name: "{{ integrity_packages }}"
+    state: present
+
+# --- RKHunter property DB update ---
+- name: Check if RKHunter property database exists
+  ansible.builtin.stat:
+    path: /var/lib/rkhunter/db/rkhunter.dat
+  register: rkhunter_db_stat
+
+- name: Update RKHunter properties (first run or forced)
+  ansible.builtin.command: rkhunter --propupd
+  environment:
+    LANG: C
+    LC_ALL: C
+  register: rkhunter_propupd
+  changed_when: not rkhunter_db_stat.stat.exists or rkhunter_force_propupd
+  when: (not rkhunter_db_stat.stat.exists) or rkhunter_force_propupd

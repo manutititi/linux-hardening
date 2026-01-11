@@ -1,0 +1,9 @@
+---
+- name: Reload Postfix
+  ansible.builtin.service:
+    name: postfix
+    state: reloaded
+  when:
+    - ansible_facts.services['postfix'] is defined
+    - ansible_facts.services['postfix'].state == 'running'
+

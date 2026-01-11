@@ -1,94 +1,122 @@
----
-# ==========================================
-# Variables para roles devsec.hardening
-# (os_hardening + ssh_hardening)
-# ==========================================
+# ==============================================================================
+# Variables para roles devsec.hardening (os_hardening + ssh_hardening)
+# ==============================================================================
 
-# =========================
+# ===============================
 # devsec.hardening.os_hardening
-# =========================
+# ===============================
 
-# No tocar usuarios de laboratorio (evita perder acceso / fallos de test)
+# --- Gestión de Usuarios ---
+# os_ignore_users: Lista de usuarios cuyos logins no se desactivarán ni se cambiarán contraseñas.
+# Default: ['vagrant', 'kitchen']
 os_ignore_users:
   - vagrant
 
-# Cierre de sesión por inactividad (en segundos). 0 = desactivado
+# --- Sesión y Acceso ---
+# os_security_auto_logout: Tiempo en segundos para cerrar sesión por inactividad.
+# Default: 0 (desactivado)
 os_security_auto_logout: 900
 
-# Política de contraseñas (hardening base)
-os_auth_pw_max_age: 60
-os_auth_pw_min_age: 7
-os_auth_pw_warn_age: 7
-os_auth_pw_remember: 5
+# os_security_init_single: ¡CRÍTICO! Requiere contraseña de root para entrar en modo single-user/recuperación.
+# Default: true (en versiones recientes del rol), forzamos a FALSE para que NO permita acceso sin pass.
+# Nota: Ponerlo en 'false' significa "No permitir acceso sin autenticación".
+os_security_init_single: false
 
-# Bloqueo por intentos fallidos (hardening base)
-os_auth_retries: 5
-os_auth_lockout_time: 600
-
-# auditd: rotación práctica para VM/lab
-os_auditd_max_log_file_action: rotate
-os_auditd_num_logs: 10
-os_auditd_max_log_file: 20
-
-# Hardening adicional clásico
+# os_ctrlaltdel_disabled: Desactiva el reinicio mediante la combinación de teclas Ctrl-Alt-Del.
+# Default: false
 os_ctrlaltdel_disabled: true
 
-# Sysctl overwrite puntuales (en lab sin Docker normalmente quieres ip_forward=0)
+# --- Política de Contraseñas (PAM) ---
+# os_auth_pw_max_age: Días máximos de validez de una contraseña. Default: 60
+os_auth_pw_max_age: 60
+# os_auth_pw_min_age: Días mínimos antes de poder cambiar la contraseña de nuevo. Default: 7
+os_auth_pw_min_age: 7
+# os_auth_pw_warn_age: Días de aviso antes de que caduque la clave. Default: 7
+os_auth_pw_warn_age: 7
+# os_auth_pw_remember: Número de contraseñas anteriores recordadas para evitar reuso. Default: 5
+os_auth_pw_remember: 5
+
+# --- Bloqueo de Cuentas ---
+# os_auth_retries: Intentos fallidos antes de bloquear la cuenta. Default: 5
+os_auth_retries: 5
+# os_auth_lockout_time: Tiempo de bloqueo en segundos tras exceder reintentos. Default: 600
+os_auth_lockout_time: 600
+
+# --- Auditoría (auditd) ---
+# os_auditd_max_log_file_action: Acción al llenar el log (ignore, syslog, rotate, email, halt). Default: keep_logs
+os_auditd_max_log_file_action: rotate
+# os_auditd_num_logs: Cantidad de archivos de log rotados a mantener. Default: 5
+os_auditd_num_logs: 10
+# os_auditd_max_log_file: Tamaño máximo del archivo de log en MB. Default: 6
+os_auditd_max_log_file: 20
+
+# --- Kernel Hardening (sysctl) ---
+# sysctl_overwrite: Diccionario para sobrescribir valores por defecto de la red y el sistema.
 sysctl_overwrite:
+  # Desactiva teclas de pánico del kernel. Default rol: 0
   kernel.sysrq: 0
+  # Reenvío de paquetes (Forwarding). Solo poner a 1 si es un Router o Docker host. Default: 0
   net.ipv4.ip_forward: 0
   net.ipv6.conf.all.forwarding: 0
-  # Si te diera error el default del rol (vm.mmap_rnd_bits=32), descomenta:
-  # vm.mmap_rnd_bits: 16
+  # vm.mmap_rnd_bits: Protege contra exploits de memoria. 
+  # Si falla el arranque en algunas VMs, bajar de 32 a 16.
+  vm.mmap_rnd_bits: 32
 
-# =========================
+# ===============================
 # devsec.hardening.ssh_hardening
-# =========================
+# ===============================
 
-# Puerto real del sshd
-ssh_server_ports: ['2222']
+# ssh_server_ports: Puertos donde escucha SSH. Cambiar el 22 es seguridad por oscuridad pero reduce ruido.
+# Default: ['22']
+ssh_server_ports: ["2222"]
 
-# Prohibir root
+# ssh_permit_root_login: Impide que root entre directamente. Obliga a usar sudo.
+# Default: 'no'
 ssh_permit_root_login: "no"
 
-# Solo llaves (sin contraseña)
+# ssh_server_password_login: Desactiva login por contraseña. Solo permite llaves SSH.
+# Default: false (en modo hardening)
 ssh_server_password_login: false
 sshd_authenticationmethods: "publickey"
 
-# Lista blanca estricta
+# ssh_allow_users: Solo estos usuarios podrán conectar. (Whitelist estricta)
 ssh_allow_users: "vagrant"
 
-# Timeouts y reintentos
+# --- Límites de Intento y Tiempo ---
+# ssh_login_grace_time: Tiempo para terminar el login antes de desconectar. Default: 60s
 ssh_login_grace_time: "60s"
+# ssh_max_auth_retries: Reintentos de autenticación por conexión. Default: 2
 ssh_max_auth_retries: 2
 
-# Mantener sesiones vivas
+# --- Gestión de Sesión ---
+# ssh_client_alive_interval: Envía un mensaje cada X segundos para ver si el cliente sigue ahí.
 ssh_client_alive_interval: 300
-ssh_client_alive_count: 3
+# ssh_client_alive_count: Intentos de alive antes de cerrar la sesión.
+ssh_client_alive_count: 2
+# ssh_max_sessions: Máximo de sesiones abiertas por conexión de red. Default: 10
+ssh_max_sessions: 2
 
-# Reducir superficie
+# --- Restricción de Funcionalidades ---
+# Desactivar reenvíos reduce el riesgo de túneles no autorizados dentro de la red.
 ssh_allow_tcp_forwarding: "no"
 ssh_allow_agent_forwarding: false
 ssh_x11_forwarding: false
 ssh_compression: false
-
-# Evitar reverse DNS
 ssh_use_dns: false
 
-# Reducir información mostrada
+# --- Privacidad e Información ---
+# Evita que el sistema diga qué versión de Debian/Ubuntu corre al conectar.
 ssh_print_debian_banner: false
 ssh_print_motd: false
 ssh_print_pam_motd: false
 ssh_print_last_log: false
 
-# Límites útiles
-ssh_max_sessions: 5
-ssh_max_startups: "10:30:60"
-
-# Logs más útiles para auditoría
+# --- Logs y Banners ---
+# VERBOSE registra la huella digital de la llave SSH usada, muy útil para auditoría.
 sshd_log_level: "VERBOSE"
+# Activa el uso de un banner legal antes del login.
+ssh_banner: true
+ssh_banner_path: "/etc/issue.net"
 
-# Banner neutro (opcional). Si lo activas, crea el fichero en otra tarea/rol.
-# ssh_banner: true
-# ssh_banner_path: "/etc/sshd/banner.txt"
-
+# Port Knocking: asegura que el firewall no se rompa al instalar el servicio.
+knock_manage_firewall_on_install: true

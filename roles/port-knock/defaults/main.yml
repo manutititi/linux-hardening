@@ -1,14 +1,26 @@
 ---
-knock_interface: "enp0s8" # Fallback if detection fails
+# Secuencias de knocking (ajusta a tu gusto)
+knock_open_sequence: [7000, 8000, 9000]
+knock_close_sequence: [9000, 8000, 7000]
 
-knock_sequence_open: "7000:tcp,8000:tcp,9000:tcp"
-knock_sequence_close: "9000:tcp,8000:tcp,7000:tcp"
+# Tiempo en segundos para completar la secuencia
+knock_seq_timeout: 10
 
-# Backend disponible: "ufw" o "iptables"
-knock_firewall_backend: "ufw"
+# Backend de firewall: "iptables" o "ufw"
+knock_firewall_backend: "iptables"
 
+# Si true: al instalar, cerrará SSH y solo lo abrirá por knocking
+knock_manage_firewall_on_install: false
+
+# Ruta de scripts
 knock_open_script_path: "/usr/local/sbin/knock_open_ssh.sh"
 knock_close_script_path: "/usr/local/sbin/knock_close_ssh.sh"
 
-# CRITICO: no tocar firewall al instalar
-knock_manage_firewall_on_install: false
+# Puerto SSH a controlar:
+# - Si Ansible está conectado por un puerto (ansible_port), ese es el que te interesa controlar.
+# - Si no existe ansible_port, cae a 22.
+ssh_port: "{{ ((ssh_server_ports | default([])) | first) | default(ansible_port | default(2222)) | int }}"
+
+# Si quieres permitir solo una IP concreta en modo estricto, rellena esto.
+# Si está vacío, se abrirá para la IP que hace knock (%IP% en knockd).
+knock_allow_fixed_ip: ""

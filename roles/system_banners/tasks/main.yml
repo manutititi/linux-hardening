@@ -1,0 +1,21 @@
+---
+- name: Configure /etc/issue (pre-login banner)
+  ansible.builtin.copy:
+    content: "{{ system_banner_message }}\n"
+    dest: /etc/issue
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure /etc/issue.net (remote login banner)
+  ansible.builtin.copy:
+    content: "{{ system_banner_message }}\n"
+    dest: /etc/issue.net
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Disable MOTD (Message of the Day) to avoid info leakage
+  ansible.builtin.file:
+    path: /etc/motd
+    state: absent

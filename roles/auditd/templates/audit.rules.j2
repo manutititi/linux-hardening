@@ -1,0 +1,51 @@
+## Delete previous rules
+-D
+
+## Increase buffer for handling peak events
+-b 8192
+
+## Set failure to "panic" mode (0=silent, 1=printk, 2=panic)
+-f 1
+
+## --- AUDIT RULES ---
+
+## 1. Audit time changes
+-a always,exit -F arch=b64 -S adjtimex -S settimeofday -k time-change
+-a always,exit -F arch=b64 -S clock_settime -k time-change
+-w /etc/localtime -p wa -k time-change
+
+## 2. Audit identity changes (Users/Groups)
+-w /etc/group -p wa -k identity
+-w /etc/passwd -p wa -k identity
+-w /etc/gshadow -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/security/opasswd -p wa -k identity
+
+## 3. Audit network environment changes
+-a always,exit -F arch=b64 -S sethostname -S setdomainname -k system-locale
+-w /etc/issue -p wa -k system-locale
+-w /etc/issue.net -p wa -k system-locale
+-w /etc/hosts -p wa -k system-locale
+-w /etc/network -p wa -k system-locale
+
+## 4. Audit login/logout events
+-w /var/log/lastlog -p wa -k logins
+-w /var/run/faillock -p wa -k logins
+
+## 5. Audit permission changes (chmod/chown)
+-a always,exit -F arch=b64 -S chmod -S fchmod -S fchmodat -F auid>=1000 -F auid!=4294967295 -k perm_mod
+-a always,exit -F arch=b64 -S chown -S fchown -S fchownat -S lchown -F auid>=1000 -F auid!=4294967295 -k perm_mod
+
+## 6. Audit mount changes
+-a always,exit -F arch=b64 -S mount -F auid>=1000 -F auid!=4294967295 -k mounts
+
+## 7. Audit changes in Auditd configuration (Autoprotection)
+-w /etc/audit/ -p wa -k auditconfig
+-w /etc/libaudit.conf -p wa -k auditconfig
+-w /etc/audisp/ -p wa -k audispconfig
+
+## 8. Audit SUID/SGID commands
+-a always,exit -F arch=b64 -S execve -C uid!=euid -F euid=0 -k elevated-privs
+
+## Make rules immutable (requires restart to change rules)
+-e 2

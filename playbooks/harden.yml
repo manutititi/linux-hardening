@@ -31,6 +31,9 @@
     - role: devsec.hardening.os_hardening
       tags: os_hardening
 
+    - role: extra_conf
+      tags: extra_conf
+
     - role: devsec.hardening.ssh_hardening
       tags: ssh_hardening
       vars:
@@ -48,10 +51,28 @@
     - role: cowrie
       tags: cowrie
 
-    # - role: port-knock
-    #   tags: port-knock
+    - role: auditd
+      tags: auditd
+
+    - role: integrity_scanning
+      tags: integrity_scanning
+
+    - role: system_banners
+      tags: system_banners
+
+    - role: port-knock
+      tags: port-knock
 
   post_tasks:
+
+    - name: Launch port knock sequence from local host
+      ansible.builtin.command: "knock {{ ansible_host | default(inventory_hostname) }} {{ knock_open_sequence | join(' ') }}"
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      when: knock_open_sequence is defined
+      tags: port-knock
+
     - name: Update ansible_port to new SSH port
       ansible.builtin.set_fact:
         ansible_port: "{{ ssh_server_ports | first }}"
@@ -62,5 +83,6 @@
       ansible.builtin.wait_for_connection:
         timeout: 60
       tags: always
+      ignore_errors: true
 
-    
+   

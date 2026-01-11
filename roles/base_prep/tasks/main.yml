@@ -19,14 +19,14 @@
   ansible.builtin.file:
     path: "~{{ base_prep_user }}/.ssh"
     state: directory
-    mode: '0700'
+    mode: "0700"
     owner: "{{ base_prep_user }}"
 
 - name: Create local keys directory if it does not exist
   ansible.builtin.file:
     path: "{{ playbook_dir }}/../keys"
     state: directory
-    mode: '0755'
+    mode: "0755"
   delegate_to: localhost
   become: false
   run_once: true
@@ -35,7 +35,7 @@
   community.crypto.openssh_keypair:
     path: "{{ playbook_dir }}/../keys/{{ base_prep_user }}_id_ed25519"
     type: ed25519
-    mode: '0600'
+    mode: "0600"
   delegate_to: localhost
   become: false
   run_once: true
@@ -45,3 +45,44 @@
     user: "{{ base_prep_user }}"
     state: present
     key: "{{ lookup('file', playbook_dir + '/../keys/' + base_prep_user + '_id_ed25519.pub') }}"
+
+# --- UFW Firewall Hardening ---
+
+- name: Reset UFW rules to default
+  community.general.ufw:
+    state: reset
+
+- name: Set UFW default policies
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+
+- name: Allow loopback traffic
+  community.general.ufw:
+    rule: allow
+    interface: lo
+    direction: in
+
+- name: Allow Real SSH (Port 2222)
+  community.general.ufw:
+    rule: allow
+    port: "2222"
+    proto: tcp
+    comment: "Real SSH Port"
+
+- name: Allow Honeypot ports (22, 2223)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    comment: "Honeypot Port"
+  loop:
+    - "22"
+    - "2223"
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
